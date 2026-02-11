@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Minhas Tarefas</title>
+    <style>
+        body { font-family: sans-serif; max-width: 600px; margin: 40px auto; padding: 20px; }
+        .tarefa { border: 1px solid #ddd; padding: 10px; margin-bottom: 10px; border-radius: 5px; display: flex; justify-content: space-between; }
+        input { padding: 8px; width: 70%; }
+        button { padding: 8px; cursor: pointer; background: #28a745; color: white; border: none; }
+        .btn-del { background: #dc3545; }
+    </style>
+</head>
+<body>
+    <h1>To-Do List FastAPI</h1>
+    
+    <div>
+        <input type="text" id="titulo" placeholder="Nova tarefa...">
+        <button onclick="criarTarefa()">Adicionar</button>
+    </div>
+
+    <div id="lista-tarefas" style="margin-top: 20px;">
+        </div>
+
+    <script>
+        async function carregarTarefas() {
+            const res = await fetch('/tarefas');
+            const tarefas = await res.json();
+            const lista = document.getElementById('lista-tarefas');
+            lista.innerHTML = '';
+            tarefas.forEach(t => {
+                lista.innerHTML += `
+                    <div class="tarefa">
+                        <span>${t.titulo}</span>
+                        <button class="btn-del" onclick="deletarTarefa('${t.id}')">X</button>
+                    </div>`;
+            });
+        }
+
+        async function criarTarefa() {
+            const titulo = document.getElementById('titulo').value;
+            await fetch('/tarefas', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ titulo: titulo })
+            });
+            document.getElementById('titulo').value = '';
+            carregarTarefas();
+        }
+
+        async function deletarTarefa(id) {
+            await fetch(`/tarefas/${id}`, { method: 'DELETE' });
+            carregarTarefas();
+        }
+
+        carregarTarefas();
+    </script>
+</body>
+</html>
