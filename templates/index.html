@@ -2,58 +2,96 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <title>Minhas Tarefas</title>
-    <style>
-        body { font-family: sans-serif; max-width: 600px; margin: 40px auto; padding: 20px; }
-        .tarefa { border: 1px solid #ddd; padding: 10px; margin-bottom: 10px; border-radius: 5px; display: flex; justify-content: space-between; }
-        input { padding: 8px; width: 70%; }
-        button { padding: 8px; cursor: pointer; background: #28a745; color: white; border: none; }
-        .btn-del { background: #dc3545; }
-    </style>
+    <title>Sistema de Inventário de Veículos</title>
+    <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-    <h1>To-Do List FastAPI</h1>
-    
-    <div>
-        <input type="text" id="titulo" placeholder="Nova tarefa...">
-        <button onclick="criarTarefa()">Adicionar</button>
+
+    <h3 class="title">CARRO</h3>
+
+    <div class="container">
+        <form action="/carros" method="post" class="form-basic">
+            <strong>ADICIONAR NOVO ITEM:</strong><br><br>
+            <label>Marca:</label> <input type="text" name="marca" required>
+            <label>Modelo:</label> <input type="text" name="modelo" required>
+            <label>Ano:</label> <input type="number" name="ano" required>
+            <br><br>
+            <label>URL da Imagem:</label> 
+            <input type="url" name="imagem_url" required style="width: 400px;">
+            <button type="submit" style="background-color: #28a745; color: white; cursor: pointer;">CADASTRAR NO BANCO</button>
+        </form>
     </div>
 
-    <div id="lista-tarefas" style="margin-top: 20px;">
-        </div>
+    <br>
+
+    <div class="container" style="background-color: #e9ecef; border: 1px dashed #999;">
+        <form action="/" method="get">
+            <strong>PESQUISAR MARCA:</strong> 
+            <input type="text" name="buscar_marca" placeholder="Ex: Fiat, Ford..." value="{{ termo_buscado or '' }}">
+            <button type="submit">BUSCAR</button>
+            
+            {% if termo_buscado %}
+                <a href="/" style="font-size: 12px; margin-left: 10px; color: #d9534f; text-decoration: none;">[Limpar Busca]</a>
+            {% endif %}
+        </form>
+    </div>
+
+    <hr>
+
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>FOTO</th>
+                <th>ESPECIFICAÇÕES</th>
+                <th>ID SQL</th>
+                <th>AÇÕES</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% if not cars %}
+            <tr>
+                <td colspan="4" style="text-align: center; padding: 20px; font-weight: bold; color: #666;">
+                    Nenhum veículo encontrado no banco de dados.
+                </td>
+            </tr>
+            {% endif %}
+            
+            {% for car in cars %}
+            <tr>
+                <td style="width: 120px;">
+                    <img src="{{ car.imagem_url }}" alt="Carro" class="thumb" style="width: 100px; border-radius: 4px;">
+                </td>
+                <td>
+                    <strong>MARCA:</strong> {{ car.marca }}<br>
+                    <strong>MODELO:</strong> {{ car.modelo }}<br>
+                    <strong>ANO:</strong> {{ car.ano }}
+                </td>
+                <td style="font-family: monospace; font-size: 14px; font-weight: bold; color: #333;">
+                    #{{ car.id }}
+                </td>
+                <td>
+                    <button class="btn-edit" onclick="window.location.href='/editar/{{ car.id }}'">EDITAR</button>
+                    <button class="btn-delete" onclick="deletarCarro('{{ car.id }}')">EXCLUIR</button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
 
     <script>
-        async function carregarTarefas() {
-            const res = await fetch('/tarefas');
-            const tarefas = await res.json();
-            const lista = document.getElementById('lista-tarefas');
-            lista.innerHTML = '';
-            tarefas.forEach(t => {
-                lista.innerHTML += `
-                    <div class="tarefa">
-                        <span>${t.titulo}</span>
-                        <button class="btn-del" onclick="deletarTarefa('${t.id}')">X</button>
-                    </div>`;
-            });
+        // Função para deletar via SQL
+        async function deletarCarro(id) {
+            if (confirm("Deseja realmente apagar o registro #" + id + " do banco de dados?")) {
+                // Envia a requisição DELETE para a rota do FastAPI
+                const response = await fetch(`/carros/${id}`, { method: 'DELETE' });
+                
+                if (response.ok) {
+                    window.location.reload(); // Recarrega a página para mostrar que sumiu
+                } else {
+                    alert("Erro ao excluir do banco de dados.");
+                }
+            }
         }
-
-        async function criarTarefa() {
-            const titulo = document.getElementById('titulo').value;
-            await fetch('/tarefas', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ titulo: titulo })
-            });
-            document.getElementById('titulo').value = '';
-            carregarTarefas();
-        }
-
-        async function deletarTarefa(id) {
-            await fetch(`/tarefas/${id}`, { method: 'DELETE' });
-            carregarTarefas();
-        }
-
-        carregarTarefas();
     </script>
 </body>
 </html>

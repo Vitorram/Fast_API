@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Editar Veículo</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <h2>Editar Veículo #{{ car['id'] }}</h2>
+        
+        <form id="form-editar" class="form-basic">
+            <label>Marca:</label>
+            <input type="text" id="marca" value="{{ car['marca'] }}" required><br><br>
+            
+            <label>Modelo:</label>
+            <input type="text" id="modelo" value="{{ car['modelo'] }}" required><br><br>
+            
+            <label>Ano:</label>
+            <input type="number" id="ano" value="{{ car['ano'] }}" required><br><br>
+            
+            <label>URL da Imagem:</label>
+            <input type="url" id="imagem_url" value="{{ car['imagem_url'] }}" required style="width: 400px;"><br><br>
+            
+            <button type="button" onclick="atualizarCarro('{{ car.id }}')">SALVAR (PUT)</button>
+
+            <a href="/">[CANCELAR]</a>
+        </form>
+    </div>
+
+    <script>
+        async function atualizarCarro(id) {
+            // 1. Coletamos os dados dos inputs
+            const dados = {
+                marca: document.getElementById('marca').value,
+                modelo: document.getElementById('modelo').value,
+                ano: parseInt(document.getElementById('ano').value),
+                imagem_url: document.getElementById('imagem_url').value
+            };
+
+            // 2. Enviamos para o Servidor via PUT
+            try {
+                const response = await fetch(`/carros/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(dados)
+                });
+
+                if (response.ok) {
+                    alert("Veículo atualizado no banco de dados!");
+                    window.location.href = "/"; // Volta para a garagem
+                } else {
+                    alert("Erro ao salvar alterações.");
+                }
+            } catch (error) {
+                console.error("Erro na requisição:", error);
+                alert("Não foi possível conectar ao servidor.");
+            }
+        }
+    </script>
+</body>
+</html>

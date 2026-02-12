@@ -1,104 +1,118 @@
-from fastapi import FastAPI, HTTPException, Request, Depends
-from pydantic import BaseModel
-from typing import Optional, List
-from uuid import uuid4
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, Request, Form, HTTPException, Query
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+import sqlite3
 
-# Importações do SQLAlchemy
-from sqlalchemy import create_engine, Column, String, Boolean
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session
+app = FastAPI(title="Carros API",
+    description="API para controle de inventário de veículos com persistência em SQLite",
+    version="1.0.0")
 
 # --- CONFIGURAÇÃO DO BANCO DE DADOS ---
-SQLALCHEMY_DATABASE_URL = "sqlite:///./tarefas.db"
-engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
 
-# Modelo do Banco de Dados (SQLAlchemy)
-class TarefaDB(Base):
-    __tablename__ = "tarefas"
-    id = Column(String, primary_key=True, index=True)
-    titulo = Column(String)
-    descricao = Column(String, nullable=True)
-    completa = Column(Boolean, default=False)
+def get_db_connection():
+    """Abre a conexão com o banco de dados SQLite."""
+    conn = sqlite3.connect('garagem.db')
+    conn.row_factory = sqlite3.Row  # Permite acessar colunas pelo nome (ex: carro['marca'])
+    return conn
 
-# Criar as tabelas no arquivo .db
-Base.metadata.create_all(bind=engine)
+def init_db():
+    """Cria a tabela se ela não existir. (Corrigido 'TEST' para 'TEXT')"""
+    conn = get_db_connection()
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS carros (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            marca TEXT NOT NULL,
+            modelo TEXT NOT NULL,
+            ano INTEGER NOT NULL,
+            imagem_url TEXT
+        )
+    ''')
+    conn.commit()
+    conn.close()
 
-# --- MODELO DE VALIDAÇÃO (Pydantic) ---
-class Tarefa(BaseModel):
-    id: Optional[str] = None
-    titulo: str
-    descricao: Optional[str] = None
-    completa: bool = False
+# Inicializa o banco ao rodar o arquivo
+init_db()
 
-    class Config:
-        from_attributes = True # Permite que o Pydantic leia dados do SQLAlchemy
-
-# --- APP E DEPENDÊNCIAS ---
-app = FastAPI()
+# --- CONFIGURAÇÕES DO FASTAPI ---
+app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
-# Função para obter a sessão do banco
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+# --- ROTAS (ENDPOINTS) ---
 
-# --- ROTAS ---
-
+# 1. LISTAR E BUSCAR (GET)
 @app.get("/", response_class=HTMLResponse)
-def exibir_pagina_inicial(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+async def home(request: Request, buscar_marca: str = Query(None)):
+    conn = get_db_connection()
+    if buscar_marca:
+        comando = "SELECT * FROM carros WHERE marca LIKE ?"
+        cursor = conn.execute(comando, (f'%{buscar_marca}%',))
+        resultados = cursor.fetchall()
+    else:
+        cursor = conn.execute('SELECT * FROM carros')
+        resultados = cursor.fetchall()
+    conn.close()
 
-@app.get("/tarefas", response_model=List[Tarefa])
-def listar_tarefas(db: Session = Depends(get_db)):
-    return db.query(TarefaDB).all()
+    return templates.TemplateResponse("index.html", {
+        "request": request,
+        "cars": resultados,
+        "termo_buscado": buscar_marca
+    })
 
-@app.post("/tarefas", response_model=Tarefa, status_code=201)
-def criar_tarefa(tarefa: Tarefa, db: Session = Depends(get_db)):
-    nova_tarefa = TarefaDB(
-        id=str(uuid4()),
-        titulo=tarefa.titulo,
-        descricao=tarefa.descricao,
-        completa=tarefa.completa
-    )
-    db.add(nova_tarefa)
-    db.commit()
-    db.refresh(nova_tarefa)
-    return nova_tarefa
+# 2. CADASTRAR (POST) - (Ajustado parênteses do execute)
+@app.post("/carros", status_code=201)
+async def cadastrar_carro(
+    marca: str = Form(...),
+    modelo: str = Form(...),
+    ano: int = Form(...),
+    imagem_url: str = Form(...)
+):
+    conn = get_db_connection()
+    comando = 'INSERT INTO carros (marca, modelo, ano, imagem_url) VALUES (?, ?, ?, ?)'
+    # Correção: comando e valores são argumentos SEPARADOS no execute
+    conn.execute(comando, (marca, modelo, ano, imagem_url))
+    conn.commit()
+    conn.close()
+    return RedirectResponse(url='/', status_code=303)
 
-@app.get("/tarefas/{tarefa_id}", response_model=Tarefa)
-def obter_tarefa(tarefa_id: str, db: Session = Depends(get_db)):
-    tarefa = db.query(TarefaDB).filter(TarefaDB.id == tarefa_id).first()
-    if not tarefa:
-        raise HTTPException(status_code=404, detail="Tarefa não encontrada")
-    return tarefa
-
-@app.put("/tarefas/{tarefa_id}", response_model=Tarefa) 
-def atualizar(tarefa_id: str, tarefa_atualizada: Tarefa, db: Session = Depends(get_db)):
-    db_tarefa = db.query(TarefaDB).filter(TarefaDB.id == tarefa_id).first()
-    if not db_tarefa:
-        raise HTTPException(status_code=404, detail="Tarefa não encontrada")
+# 3. PÁGINA DE EDIÇÃO (GET)
+@app.get("/editar/{car_id}", response_class=HTMLResponse)
+async def pagina_editar(request: Request, car_id: int):
+    conn = get_db_connection()
+    carro = conn.execute('SELECT * FROM carros WHERE id = ?', (car_id,)).fetchone()
+    conn.close()
     
-    db_tarefa.titulo = tarefa_atualizada.titulo
-    db_tarefa.descricao = tarefa_atualizada.descricao
-    db_tarefa.completa = tarefa_atualizada.completa
-    
-    db.commit()
-    db.refresh(db_tarefa)
-    return db_tarefa
+    if carro is None:
+        return RedirectResponse(url="/")
+        
+    return templates.TemplateResponse("editar.html", {"request": request, "car": carro})
 
-@app.delete("/tarefas/{tarefa_id}", status_code=204)
-def deletar_tarefa(tarefa_id: str, db: Session = Depends(get_db)):
-    db_tarefa = db.query(TarefaDB).filter(TarefaDB.id == tarefa_id).first()
-    if not db_tarefa:
-        raise HTTPException(status_code=404, detail="Tarefa não encontrada")
-    
-    db.delete(db_tarefa)
-    db.commit()
+# 4. SALVAR EDIÇÃO (PUT)
+@app.put("/carros/{car_id}")
+async def atualizar_carro(car_id: int, dados: dict):
+    conn = get_db_connection()
+    comando = '''
+        UPDATE carros 
+        SET marca = ?, modelo = ?, ano = ?, imagem_url = ? 
+        WHERE id = ?
+    '''
+    conn.execute(comando, (
+        dados['marca'], 
+        dados['modelo'], 
+        dados['ano'], 
+        dados['imagem_url'], 
+        car_id
+    ))
+    conn.commit()
+    conn.close()
+    return {"status": "sucesso"}
+
+# 5. DELETAR (DELETE) - (Ajustado vírgula na tupla)
+@app.delete("/carros/{car_id}", status_code=204)
+async def deletar_carro(car_id: int):
+    conn = get_db_connection()
+    # Correção: O SQLite exige uma vírgula para identificar uma tupla de um item só
+    conn.execute('DELETE FROM carros WHERE id = ?', (car_id,))
+    conn.commit()
+    conn.close()
     return None
